@@ -1,0 +1,134 @@
+<!-- reviewModal.html (FULL REPLACEMENT) -->
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Unreviewed Jobs</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font: 14px/1.4 Arial, sans-serif; margin: 16px; }
+    h1 { margin: 0 0 8px 0; font-size: 18px; }
+    h2 { margin: 0 0 8px 0; font-size: 14px; }
+    .reviewer-wrap { margin-bottom: 10px; }
+    .reviewer-bar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .reviewer-chip { display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #bbb; border-radius:16px; }
+    .reviewer-chip input { margin:0; }
+    .list { border: 1px solid #ccc; border-radius: 6px; max-height: 600px; overflow: auto; padding: 8px; }
+    .job { display:flex; gap:8px; align-items:center; padding:6px 4px; border-bottom:1px solid #eee; }
+    .job:last-child { border-bottom:none; }
+    .title { font-weight:700; }
+    .meta { color:#555; font-size:12px; }
+    .empty { padding:8px; color:#555; }
+    .actions { display:flex; gap:8px; margin-top:12px; }
+    button { padding:8px 12px; cursor:pointer; }
+    .spinner { display:inline-block; width:16px; height:16px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .9s linear infinite; margin-left:8px; vertical-align:text-bottom; }
+    .hidden { display:none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1 id="title">Unreviewed Jobs</h1>
+
+  <div class="reviewer-wrap">
+    <h2>Select Reviewer(s)</h2>
+    <div class="reviewer-bar" id="reviewerBar"><span class="empty">Loading reviewers…</span></div>
+  </div>
+
+  <div id="jobs" class="list">
+    <div class="empty">Loading jobs…</div>
+  </div>
+
+  <div class="actions">
+    <button id="reviewBtn" type="button">
+      Review Job(s) <span id="spinReview" class="spinner hidden"></span>
+    </button>
+    <button id="cancelBtn" type="button">Cancel</button>
+  </div>
+
+  <script>
+    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function setBusy(btnId,spinId,busy){
+      var b=document.getElementById(btnId),s=document.getElementById(spinId);
+      if(b)b.disabled=!!busy;
+      if(s){ if(busy)s.classList.remove('hidden'); else s.classList.add('hidden'); }
+    }
+
+    function renderInitial(payload){
+      var name = payload.owner && payload.owner.trim() ? payload.owner : '';
+      document.getElementById('title').textContent = name ? ('Unreviewed Jobs for ' + name) : 'Unreviewed Jobs';
+
+      var bar=document.getElementById('reviewerBar'); bar.innerHTML='';
+      var rlist=payload.reviewers||[];
+      if(!rlist.length){
+        var span=document.createElement('span');
+        span.className='empty';
+        span.textContent='No reviewers in Data!V2:V';
+        bar.appendChild(span);
+      } else {
+        for(var i=0;i<rlist.length;i++){
+          var chip=document.createElement('label');
+          chip.className='reviewer-chip';
+          chip.innerHTML='<input type="checkbox" class="revPick" value="'+escapeHtml(rlist[i])+'"> <span>'+escapeHtml(rlist[i])+'</span>';
+          bar.appendChild(chip);
+        }
+      }
+
+      var el=document.getElementById('jobs'); el.innerHTML='';
+      var jobs=payload.jobs||[];
+      if(!jobs.length){
+        el.innerHTML='<div class="empty">No jobs found.</div>';
+      } else {
+        var html=[];
+        for(var j=0;j<jobs.length;j++){
+          var it=jobs[j];
+          html.push(
+            '<div class="job">' +
+              '<input type="checkbox" class="pick" data-row="'+it.row+'">' +
+              '<div>' +
+                '<div class="title">'+escapeHtml(it.projectName)+'</div>' +
+                '<div class="meta">'+escapeHtml(it.startDate||'')+'</div>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+        el.innerHTML=html.join('');
+      }
+    }
+
+    function openSummary(evt){
+      if(evt&&evt.preventDefault)evt.preventDefault();
+      var picks=document.querySelectorAll('.pick:checked');
+      var revs=document.querySelectorAll('.revPick:checked');
+      var rows=[], reviewers=[];
+      for(var i=0;i<picks.length;i++) rows.push(+picks[i].getAttribute('data-row'));
+      for(var k=0;k<revs.length;k++) reviewers.push(revs[k].value);
+
+      if(!rows.length){ google.script.run.showUiMessage('warning','Select at least one job.'); return false; }
+      if(!reviewers.length){ google.script.run.showUiMessage('warning','Select at least one reviewer.'); return false; }
+
+      setBusy('reviewBtn','spinReview',true);
+      google.script.run
+        .withSuccessHandler(function(){ setBusy('reviewBtn','spinReview',false); })
+        .withFailureHandler(function(err){
+          setBusy('reviewBtn','spinReview',false);
+          google.script.run.showUiMessage('error','Open Review failed: '+(err&&err.message?err.message:err));
+        })
+        .openReviewSummary(rows,reviewers);
+      return false;
+    }
+
+    function init(){
+      google.script.run
+        .withSuccessHandler(renderInitial)
+        .withFailureHandler(function(){ renderInitial({owner:'',reviewers:[],jobs:[]}); })
+        .getInitialData();
+
+      document.getElementById('reviewBtn').addEventListener('click', openSummary);
+      document.getElementById('cancelBtn').addEventListener('click', function(){ google.script.host.close(); });
+    }
+
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init); else init();
+  </script>
+</body>
+</html>

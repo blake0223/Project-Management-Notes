@@ -1,0 +1,182 @@
+<!-- postProjectNotes.html (NEW FILE) -->
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Post-Project Notes</title>
+  <style>
+    body { font: 14px/1.4 Arial, sans-serif; margin: 16px; }
+    h1 { margin: 0 0 10px 0; font-size: 18px; }
+    .grid { display:grid; grid-template-columns: 360px 1fr; gap: 12px; }
+    .box { border:1px solid #ccc; border-radius:8px; padding:10px; }
+    .list { max-height: 640px; overflow:auto; border:1px solid #eee; border-radius:6px; }
+    .item { padding:8px 10px; border-bottom:1px solid #eee; cursor:pointer; }
+    .item:hover { background:#fafafa; }
+    .item.active { background:#eaf2ff; }
+    .muted { color:#666; font-size:12px; }
+    .row { margin: 6px 0; }
+    .label { display:inline-block; width:170px; color:#555; }
+    textarea { width:100%; min-height:240px; box-sizing:border-box; resize:vertical; }
+    .actions { display:flex; gap:8px; margin-top:10px; }
+    button { padding:8px 12px; cursor:pointer; }
+    .spinner { display:inline-block; width:16px; height:16px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .9s linear infinite; margin-left:8px; vertical-align:text-bottom; }
+    .hidden { display:none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    a { color:#1155cc; }
+  </style>
+</head>
+<body>
+  <h1>Post-Project Notes (Data!AD)</h1>
+
+  <div class="grid">
+    <div class="box">
+      <div class="row"><b>Select a job from Data</b></div>
+      <div id="jobList" class="list"><div class="item">Loading…</div></div>
+    </div>
+
+    <div class="box">
+      <div id="details">
+        <div class="muted">Select a job to view details.</div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <b>Post-Project Notes</b>
+      </div>
+      <textarea id="postNotes" placeholder="Write post-project notes here…"></textarea>
+
+      <div class="actions">
+        <button id="saveBtn" type="button">Save Note <span id="spinSave" class="spinner hidden"></span></button>
+        <button id="closeBtn" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function setBusy(b){
+      var btn=document.getElementById('saveBtn');
+      var sp=document.getElementById('spinSave');
+      if(btn) btn.disabled=!!b;
+      if(sp){ if(b) sp.classList.remove('hidden'); else sp.classList.add('hidden'); }
+    }
+    function ensureHttp(u){
+      if(!u) return '';
+      if(/^https?:\/\//i.test(u)) return u;
+      if(/^www\./i.test(u)) return 'https://'+u;
+      if(/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}($|[\/?#])/i.test(u)) return 'https://'+u;
+      return u;
+    }
+    function escAttrUrl(u){try{return encodeURI(u).replace(/"/g,'%22').replace(/'/g,'%27');}catch(e){return u;}}
+
+    var jobs = [];
+    var selectedRow = null;
+
+    function renderList(){
+      var host=document.getElementById('jobList');
+      if(!jobs.length){
+        host.innerHTML = '<div class="item">No jobs found in Data!A.</div>';
+        return;
+      }
+      var html=[];
+      for(var i=0;i<jobs.length;i++){
+        var j=jobs[i];
+        var active = (selectedRow === j.row) ? ' active' : '';
+        html.push(
+          '<div class="item'+active+'" data-row="'+j.row+'">' +
+            '<div><b>'+escapeHtml(j.projectName)+'</b></div>' +
+            '<div class="muted">Salesman: '+escapeHtml(j.salesman||'')+' | ID: '+escapeHtml(j.pipedriveId||'')+'</div>' +
+          '</div>'
+        );
+      }
+      host.innerHTML = html.join('');
+      host.querySelectorAll('.item[data-row]').forEach(function(el){
+        el.addEventListener('click', function(){
+          var r = +el.getAttribute('data-row');
+          selectRow(r);
+        });
+      });
+    }
+
+    function renderDetails(d){
+      var host=document.getElementById('details');
+      if(!d){
+        host.innerHTML = '<div class="muted">Select a job to view details.</div>';
+        return;
+      }
+
+      var ml = ensureHttp(d.materialList||'');
+      var mlHtml = ml ? ('<a href="'+escAttrUrl(ml)+'" target="_blank" rel="noopener">Open</a>') : '-';
+
+      host.innerHTML =
+        '<div class="row"><b>'+escapeHtml(d.projectName||'')+'</b></div>' +
+        '<div class="row"><span class="label">Pipedrive ID:</span> '+escapeHtml(d.pipedriveId||'')+'</div>' +
+        '<div class="row"><span class="label">Salesman:</span> '+escapeHtml(d.salesman||'')+'</div>' +
+        '<div class="row"><span class="label">Reviewed by:</span> '+escapeHtml(d.reviewedBy||'')+'</div>' +
+        '<div class="row"><span class="label">Project Start Date:</span> '+escapeHtml(d.startDate||'')+'</div>' +
+        '<div class="row"><span class="label">Material List:</span> '+mlHtml+'</div>' +
+        '<div class="row"><span class="label">Estimated Material:</span> '+escapeHtml(d.estMaterial==null?'':String(d.estMaterial))+'</div>' +
+        '<div class="row"><span class="label">Estimated Mandays:</span> '+escapeHtml(d.estMandays==null?'':String(d.estMandays))+'</div>' +
+        '<div class="row"><span class="label">PM Notes:</span> '+escapeHtml(d.pmNotes||'')+'</div>';
+    }
+
+    function selectRow(row){
+      selectedRow = row;
+      renderList();
+
+      google.script.run
+        .withSuccessHandler(function(d){
+          renderDetails(d);
+          document.getElementById('postNotes').value = (d && d.postNotes) ? d.postNotes : '';
+        })
+        .withFailureHandler(function(err){
+          google.script.run.showUiMessage('error', 'Load details failed: ' + (err && err.message ? err.message : err));
+        })
+        .getPostProjectJobDetails(row);
+    }
+
+    function save(){
+      if(!selectedRow){
+        google.script.run.showUiMessage('warning','Select a job first.');
+        return;
+      }
+      var txt = document.getElementById('postNotes').value || '';
+      setBusy(true);
+      google.script.run
+        .withSuccessHandler(function(res){
+          setBusy(false);
+          if(res && res.ok){
+            google.script.run.showUiMessage('info','Saved to Data!AD.');
+          } else {
+            google.script.run.showUiMessage('warning','Save failed.');
+          }
+        })
+        .withFailureHandler(function(err){
+          setBusy(false);
+          google.script.run.showUiMessage('error','Save failed: ' + (err && err.message ? err.message : err));
+        })
+        .savePostProjectNote(selectedRow, txt);
+    }
+
+    function init(){
+      document.getElementById('saveBtn').addEventListener('click', save);
+      document.getElementById('closeBtn').addEventListener('click', function(){ google.script.host.close(); });
+
+      google.script.run
+        .withSuccessHandler(function(list){
+          jobs = list || [];
+          renderList();
+        })
+        .withFailureHandler(function(err){
+          jobs = [];
+          renderList();
+          google.script.run.showUiMessage('error','Load jobs failed: ' + (err && err.message ? err.message : err));
+        })
+        .getPostProjectJobs();
+    }
+
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  </script>
+</body>
+</html>

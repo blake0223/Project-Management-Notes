@@ -1,0 +1,231 @@
+<!-- reviewSummary.html (FULL REPLACEMENT) -->
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Review</title>
+  <style>
+    body { font: 14px/1.4 Arial, sans-serif; margin: 16px; }
+    h1 { margin: 0 0 12px 0; font-size: 18px; }
+    .pill { display:inline-block; padding:2px 8px; border:1px solid #bbb; border-radius:12px; margin-right:6px; }
+    .card { border:1px solid #ccc; border-radius:8px; padding:12px; min-height:520px; display:flex; flex-direction:column; }
+    .row { margin:6px 0; }
+    .label { color:#555; width:180px; display:inline-block; }
+    .comment-wrap { flex:1; display:flex; flex-direction:column; margin-top:10px; }
+    .comment-wrap label { margin-bottom:6px; font-weight:bold; }
+    .comment-wrap textarea { flex:1; width:100%; resize:none; min-height:260px; box-sizing:border-box; }
+    .ml-input { margin-left:180px; display:block; width:calc(100% - 180px); box-sizing:border-box; }
+    .hint { color:#777; font-size:12px; margin-left:180px; }
+    .actions { display:flex; gap:8px; margin-top:12px; align-items:center; }
+    button { padding:8px 12px; cursor:pointer; }
+    .spinner { display:inline-block; width:16px; height:16px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .9s linear infinite; margin-left:8px; vertical-align:text-bottom; }
+    .hidden { display:none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .nav { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    .mode { display:inline-flex; gap:12px; align-items:center; margin-left:180px; }
+    .mode label { display:inline-flex; gap:6px; align-items:center; }
+  </style>
+</head>
+<body>
+  <h1>Review</h1>
+
+  <div id="reviewers"></div>
+  <div id="cardHost"></div>
+
+  <div class="actions">
+    <button id="submitBtn" type="button">
+      Submit This Job <span id="spinSubmit" class="spinner hidden"></span>
+    </button>
+    <button type="button" id="cancelBtn">Close</button>
+
+    <div class="nav">
+      <button type="button" id="prevBtn">Prev</button>
+      <div id="pos"></div>
+      <button type="button" id="nextBtn">Next</button>
+    </div>
+  </div>
+
+  <script id="payload" type="application/json"><?!= JSON.stringify(payload) ?></script>
+
+  <script>
+    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function setBusy(b){
+      var btn=document.getElementById('submitBtn'),sp=document.getElementById('spinSubmit');
+      if(btn)btn.disabled=!!b;
+      if(sp){ if(b)sp.classList.remove('hidden'); else sp.classList.add('hidden'); }
+      document.getElementById('prevBtn').disabled = b || (idx===0);
+      document.getElementById('nextBtn').disabled = b || (idx===jobs.length-1);
+    }
+    function ensureHttp(u){
+      if(!u) return '';
+      if(/^https?:\/\//i.test(u))return u;
+      if(/^www\./i.test(u))return 'https://'+u;
+      if(/^[A-Za-z0-9.-]+\.[A-Za-z]{2,}($|[\/?#])/i.test(u))return 'https://'+u;
+      return u;
+    }
+    function escAttrUrl(u){try{return encodeURI(u).replace(/"/g,'%22').replace(/'/g,'%27');}catch(e){return u;}}
+    function parseMoney(v){if(v==null)return null; var s=String(v).replace(/[^0-9.\-]/g,''); if(!s)return null; var n=parseFloat(s); return isNaN(n)?null:n;}
+    function fmtCurrency(v){if(v==null)return ''; try{return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v);}catch(e){return '$'+(Math.round(v*100)/100).toLocaleString();}}
+    function getPayload(){var el=document.getElementById('payload'); try{return JSON.parse(el.textContent||el.innerText||'{}');}catch(e){return {reviewers:[],jobs:[]};}}
+
+    var PAYLOAD = getPayload();
+    var jobs = PAYLOAD.jobs || [];
+    var idx = 0;
+    var done = {}; // row -> true after submit
+
+    // persistent state keyed by job row
+    var state = {}; // row -> {comment, mlOverride, mode}
+    function initState(){
+      for(var i=0;i<jobs.length;i++){
+        var it=jobs[i];
+        state[String(it.row)] = {
+          comment: it.draftNotes || '',
+          mlOverride: '',
+          mode: 'completed' // default; user can switch to Draft
+        };
+      }
+    }
+
+    function renderReviewers(){
+      var rwrap=document.getElementById('reviewers');
+      var pills=[];
+      for(var i=0;i<(PAYLOAD.reviewers||[]).length;i++){
+        pills.push('<span class="pill">'+escapeHtml(PAYLOAD.reviewers[i])+'</span>');
+      }
+      rwrap.innerHTML='<b>Reviewer(s):</b> '+pills.join(' ');
+    }
+
+    function saveCurrentToState(){
+      if(!jobs.length) return;
+      var it = jobs[idx];
+      var key = String(it.row);
+
+      var ta = document.querySelector('textarea.jobComment');
+      if(ta) state[key].comment = ta.value || '';
+
+      var mu = document.querySelector('input.mlOverride');
+      if(mu) state[key].mlOverride = (mu.value || '').trim();
+
+      var m = document.querySelector('input[name="modePick"]:checked');
+      if(m) state[key].mode = m.value;
+    }
+
+    function renderCard(){
+      if(!jobs.length){
+        document.getElementById('cardHost').innerHTML = '<div class="card">No jobs selected.</div>';
+        document.getElementById('pos').textContent = '';
+        document.getElementById('submitBtn').disabled = true;
+        return;
+      }
+
+      var it = jobs[idx];
+      var key = String(it.row);
+      var st = state[key] || {comment:'', mlOverride:'', mode:'completed'};
+
+      document.getElementById('pos').textContent = (idx+1) + ' / ' + jobs.length + (done[key] ? ' (submitted)' : '');
+
+      var matHref = ensureHttp(it.materialListLink||'');
+      var matHtml = matHref
+        ? ('<a href="'+escAttrUrl(matHref)+'" target="_blank" rel="noopener">Open</a>')
+        : ('<input type="url" class="ml-input mlOverride" value="'+escapeHtml(st.mlOverride||'')+'" placeholder="Paste material list URL">');
+
+      var deal = fmtCurrency(parseMoney(it.dealValue));
+      var estMat = fmtCurrency(parseMoney(it.estMaterialCost));
+      var estMandays = (it.estMandays == null ? '' : String(it.estMandays));
+
+      var modeHtml =
+        '<div class="row"><span class="label">Submit as:</span>' +
+          '<div class="mode">' +
+            '<label><input type="radio" name="modePick" value="completed" '+(st.mode==='completed'?'checked':'')+'> Completed</label>' +
+            '<label><input type="radio" name="modePick" value="draft" '+(st.mode==='draft'?'checked':'')+'> Draft</label>' +
+          '</div>' +
+        '</div>';
+
+      var html =
+        '<div class="card">' +
+          '<div class="row"><b>'+escapeHtml(it.projectName)+'</b></div>' +
+          '<div class="row"><span class="label">Salesman:</span> '+escapeHtml(it.salesmanDisplay||'')+'</div>' +
+          '<div class="row"><span class="label">Pipedrive ID:</span> '+escapeHtml(it.pipedriveId||'')+'</div>' +
+          '<div class="row"><span class="label">Start date:</span> '+escapeHtml(it.startDate||'')+'</div>' +
+          '<div class="row"><span class="label">Deal Value:</span> '+escapeHtml(deal)+'</div>' +
+          '<div class="row"><span class="label">Material list:</span> '+matHtml+'</div>' +
+          '<div class="row"><span class="label">Estimated material:</span> '+escapeHtml(estMat)+'</div>' +
+          '<div class="row"><span class="label">Estimated mandays:</span> '+escapeHtml(estMandays)+'</div>' +
+          '<div class="row"><span class="label">Material List Notes:</span> '+escapeHtml(it.materialListNotes||'')+'</div>' +
+          modeHtml +
+          '<div class="comment-wrap">' +
+            '<label>Project Manager Notes</label>' +
+            '<textarea class="jobComment">'+escapeHtml(st.comment||'')+'</textarea>' +
+          '</div>' +
+        '</div>';
+
+      document.getElementById('cardHost').innerHTML = html;
+
+      document.getElementById('prevBtn').disabled = (idx === 0);
+      document.getElementById('nextBtn').disabled = (idx === jobs.length - 1);
+
+      document.getElementById('submitBtn').disabled = !!done[key];
+    }
+
+    function prev(){
+      saveCurrentToState();
+      if(idx > 0){ idx--; renderCard(); }
+    }
+    function next(){
+      saveCurrentToState();
+      if(idx < jobs.length - 1){ idx++; renderCard(); }
+    }
+
+    function submitThis(){
+      if(!jobs.length) return;
+      var it = jobs[idx];
+      var key = String(it.row);
+      if(done[key]) return;
+
+      saveCurrentToState();
+
+      var reviewers = PAYLOAD.reviewers || [];
+      var st = state[key] || {comment:'', mlOverride:'', mode:'completed'};
+
+      setBusy(true);
+      google.script.run
+        .withSuccessHandler(function(res){
+          setBusy(false);
+          if(res && res.ok){
+            done[key] = true;
+            // auto-advance to next unsubmitted job
+            for(var i=0;i<jobs.length;i++){
+              var ni = (idx + 1 + i) % jobs.length;
+              var nk = String(jobs[ni].row);
+              if(!done[nk]){ idx = ni; renderCard(); return; }
+            }
+            renderCard(); // all submitted
+          } else {
+            google.script.run.showUiMessage('error','Submit failed.');
+          }
+        })
+        .withFailureHandler(function(err){
+          setBusy(false);
+          google.script.run.showUiMessage('error','Submit failed: '+(err&&err.message?err.message:err));
+        })
+        .processSingleJobReview({
+          reviewers: reviewers,
+          row: it.row,
+          comment: st.comment || '',
+          materialListLink: st.mlOverride || '',
+          mode: st.mode || 'completed'
+        });
+    }
+
+    document.getElementById('submitBtn').addEventListener('click', submitThis);
+    document.getElementById('cancelBtn').addEventListener('click', function(){ google.script.host.close(); });
+    document.getElementById('prevBtn').addEventListener('click', prev);
+    document.getElementById('nextBtn').addEventListener('click', next);
+
+    initState();
+    renderReviewers();
+    renderCard();
+  </script>
+</body>
+</html>
