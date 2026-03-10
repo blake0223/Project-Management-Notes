@@ -32,6 +32,8 @@
   <div class="grid">
     <div class="box">
       <div class="row"><b>Select a job from Data</b></div>
+      <input id="jobSearch" type="text" placeholder="Search by job name…"
+             style="width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;">
       <div id="jobList" class="list"><div class="item">Loading…</div></div>
     </div>
 
@@ -74,13 +76,19 @@
 
     function renderList(){
       var host=document.getElementById('jobList');
-      if(!jobs.length){
-        host.innerHTML = '<div class="item">No jobs found in Data!A.</div>';
+      var filter=(document.getElementById('jobSearch').value||'').toLowerCase();
+      var filtered=jobs.filter(function(j){
+        return !filter || (j.projectName||'').toLowerCase().indexOf(filter)!==-1;
+      });
+      if(!filtered.length){
+        host.innerHTML = filter
+          ? '<div class="item">No jobs match "'+escapeHtml(filter)+'".</div>'
+          : '<div class="item">No jobs found in Data!A.</div>';
         return;
       }
       var html=[];
-      for(var i=0;i<jobs.length;i++){
-        var j=jobs[i];
+      for(var i=0;i<filtered.length;i++){
+        var j=filtered[i];
         var active = (selectedRow === j.row) ? ' active' : '';
         html.push(
           '<div class="item'+active+'" data-row="'+j.row+'">' +
@@ -161,6 +169,7 @@
     function init(){
       document.getElementById('saveBtn').addEventListener('click', save);
       document.getElementById('closeBtn').addEventListener('click', function(){ google.script.host.close(); });
+      document.getElementById('jobSearch').addEventListener('input', function(){ renderList(); });
 
       google.script.run
         .withSuccessHandler(function(list){
