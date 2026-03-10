@@ -622,6 +622,8 @@ function saveFollowUp(data) {
   var pmResponsible = String(data.pmResponsible || '').trim();
   var reason        = String(data.reason || '').trim();
 
+  if (!customerName) return { ok: false, reason: 'Customer Name is required.' };
+  if (!pmResponsible) return { ok: false, reason: 'PM Responsible is required.' };
   if (!reason) return { ok: false, reason: 'Reason for follow up is required.' };
 
   var TAB_NAME = 'Customer Follow Up';

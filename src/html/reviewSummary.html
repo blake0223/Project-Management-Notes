@@ -25,6 +25,7 @@
     .nav { margin-left:auto; display:flex; gap:8px; align-items:center; }
     .mode { display:inline-flex; gap:12px; align-items:center; margin-left:180px; }
     .mode label { display:inline-flex; gap:6px; align-items:center; }
+    .req::after { content: ' *'; color: #c00; }
     .followup-check { display:flex; align-items:center; gap:6px; margin:8px 0 0 0; padding:8px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; }
     .followup-check input { margin:0; }
     .followup-check label { font-weight:600; color:#795548; cursor:pointer; }
@@ -50,17 +51,17 @@
     <div class="overlay-box">
       <h2>Customer Follow Up</h2>
       <div class="fu-grid">
-        <label>Customer Name</label>
+        <label class="req">Customer Name</label>
         <input id="fuCustomer" type="text" readonly style="background:#f5f5f5;">
         <label>Address</label>
-        <input id="fuAddress" type="text" placeholder="Job address">
+        <input id="fuAddress" type="text" placeholder="Job address (optional)">
         <label>Phone</label>
-        <input id="fuPhone" type="tel" placeholder="Phone number">
+        <input id="fuPhone" type="tel" placeholder="Phone number (optional)">
         <label>Email</label>
-        <input id="fuEmail" type="email" placeholder="Email address">
-        <label>PM Responsible</label>
+        <input id="fuEmail" type="email" placeholder="Email address (optional)">
+        <label class="req">PM Responsible</label>
         <input id="fuPM" type="text" placeholder="Project Manager">
-        <label>Reason for Follow Up</label>
+        <label class="req">Reason for Follow Up</label>
         <textarea id="fuReason" placeholder="Describe the issue or reason…"></textarea>
       </div>
       <div class="fu-actions">
@@ -258,8 +259,16 @@
         pmResponsible: document.getElementById('fuPM').value.trim(),
         reason: document.getElementById('fuReason').value.trim()
       };
+      if(!data.customerName){
+        google.script.run.showUiMessage('warning','Customer Name is required.');
+        return;
+      }
+      if(!data.pmResponsible){
+        google.script.run.showUiMessage('warning','PM Responsible is required.');
+        return;
+      }
       if(!data.reason){
-        google.script.run.showUiMessage('warning','Please enter a reason for follow up.');
+        google.script.run.showUiMessage('warning','Reason for follow up is required.');
         return;
       }
       var btn=document.getElementById('fuSubmitBtn'), sp=document.getElementById('spinFU');
