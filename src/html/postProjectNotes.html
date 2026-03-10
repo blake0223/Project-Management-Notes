@@ -21,13 +21,15 @@
     .actions { display:flex; gap:8px; margin-top:10px; }
     button { padding:8px 12px; cursor:pointer; }
     .spinner { display:inline-block; width:16px; height:16px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .9s linear infinite; margin-left:8px; vertical-align:text-bottom; }
+    .load-spinner { display:flex; align-items:center; justify-content:center; padding:40px 0; }
+    .load-spinner .spinner { margin-left:0; width:28px; height:28px; border-width:3px; }
     .hidden { display:none; }
     @keyframes spin { to { transform: rotate(360deg); } }
     a { color:#1155cc; }
   </style>
 </head>
 <body>
-  <h1>Post-Project Notes (Data!AD)</h1>
+  <h1>Post-Project Notes</h1>
 
   <div class="grid">
     <div class="box">
@@ -42,14 +44,16 @@
         <div class="muted">Select a job to view details.</div>
       </div>
 
-      <div class="row" style="margin-top:10px;">
-        <b>Post-Project Notes</b>
-      </div>
-      <textarea id="postNotes" placeholder="Write post-project notes here…"></textarea>
+      <div id="notesSection" class="hidden">
+        <div class="row" style="margin-top:10px;">
+          <b>Post-Project Notes</b>
+        </div>
+        <textarea id="postNotes" placeholder="Write post-project notes here…"></textarea>
 
-      <div class="actions">
-        <button id="saveBtn" type="button">Save Note <span id="spinSave" class="spinner hidden"></span></button>
-        <button id="closeBtn" type="button">Close</button>
+        <div class="actions">
+          <button id="saveBtn" type="button">Save Note <span id="spinSave" class="spinner hidden"></span></button>
+          <button id="closeBtn" type="button">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -132,12 +136,17 @@
       selectedRow = row;
       renderList();
 
+      document.getElementById('details').innerHTML = '<div class="load-spinner"><span class="spinner"></span></div>';
+      document.getElementById('notesSection').classList.add('hidden');
+
       google.script.run
         .withSuccessHandler(function(d){
           renderDetails(d);
           document.getElementById('postNotes').value = (d && d.postNotes) ? d.postNotes : '';
+          document.getElementById('notesSection').classList.remove('hidden');
         })
         .withFailureHandler(function(err){
+          document.getElementById('details').innerHTML = '<div class="muted">Failed to load details.</div>';
           google.script.run.showUiMessage('error', 'Load details failed: ' + (err && err.message ? err.message : err));
         })
         .getPostProjectJobDetails(row);
