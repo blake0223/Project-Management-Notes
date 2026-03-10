@@ -30,17 +30,10 @@
     .followup-check { display:flex; align-items:center; gap:6px; margin:8px 0 0 0; padding:8px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; }
     .followup-check input { margin:0; }
     .followup-check label { font-weight:600; color:#795548; cursor:pointer; }
-    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100; }
-    .overlay-box { background:#fff; border-radius:10px; padding:20px; width:520px; max-width:90vw; box-shadow:0 4px 24px rgba(0,0,0,.2); }
-    .overlay-box h2 { margin:0 0 12px 0; font-size:16px; }
     .fu-grid { display:grid; grid-template-columns:160px 1fr; gap:8px 10px; align-items:center; }
     .fu-grid label { color:#555; font-weight:600; }
     .fu-grid input, .fu-grid textarea { padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; width:100%; }
     .fu-grid textarea { min-height:80px; resize:vertical; }
-    .fu-actions { display:flex; gap:8px; margin-top:14px; }
-    .fu-actions button { padding:8px 14px; }
-    .fu-actions .primary { background:#4285f4; color:#fff; border:1px solid #4285f4; border-radius:4px; }
-    .fu-actions .primary:hover { background:#3367d6; }
   </style>
 </head>
 <body>
@@ -70,34 +63,29 @@
           <label for="needsFollowUp">Needs Follow Up?</label>
         </div>
 
+        <!-- Follow-up fields shown inline when checkbox is checked -->
+        <div id="followUpSection" class="hidden" style="margin-top:10px;">
+          <div style="border:1px solid #ffe082; border-radius:8px; padding:12px; background:#fff8e1;">
+            <h3 style="margin:0 0 10px 0; font-size:15px; color:#795548;">Customer Follow Up Details</h3>
+            <div class="fu-grid">
+              <label>Address</label>
+              <input id="fuAddress" type="text" placeholder="Job address (optional)">
+              <label>Phone</label>
+              <input id="fuPhone" type="tel" placeholder="Phone number (optional)">
+              <label>Email</label>
+              <input id="fuEmail" type="email" placeholder="Email address (optional)">
+              <label class="req">PM Responsible</label>
+              <input id="fuPM" type="text" placeholder="Project Manager">
+              <label class="req">Reason for Follow Up</label>
+              <textarea id="fuReason" placeholder="Describe the issue or reason…"></textarea>
+            </div>
+          </div>
+        </div>
+
         <div class="actions">
           <button id="saveBtn" type="button">Save Note <span id="spinSave" class="spinner hidden"></span></button>
           <button id="closeBtn" type="button">Close</button>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="followUpOverlay" class="overlay hidden">
-    <div class="overlay-box">
-      <h2>Customer Follow Up</h2>
-      <div class="fu-grid">
-        <label class="req">Customer Name</label>
-        <input id="fuCustomer" type="text" readonly style="background:#f5f5f5;">
-        <label>Address</label>
-        <input id="fuAddress" type="text" placeholder="Job address (optional)">
-        <label>Phone</label>
-        <input id="fuPhone" type="tel" placeholder="Phone number (optional)">
-        <label>Email</label>
-        <input id="fuEmail" type="email" placeholder="Email address (optional)">
-        <label class="req">PM Responsible</label>
-        <input id="fuPM" type="text" placeholder="Project Manager">
-        <label class="req">Reason for Follow Up</label>
-        <textarea id="fuReason" placeholder="Describe the issue or reason…"></textarea>
-      </div>
-      <div class="fu-actions">
-        <button class="primary" id="fuSubmitBtn" type="button">Submit Follow Up <span id="spinFU" class="spinner hidden"></span></button>
-        <button id="fuCancelBtn" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -190,6 +178,8 @@
           selectedJobName = (d && d.projectName) || '';
           document.getElementById('postNotes').value = (d && d.postNotes) ? d.postNotes : '';
           document.getElementById('needsFollowUp').checked = false;
+          document.getElementById('followUpSection').classList.add('hidden');
+          resetFollowUpFields();
           document.getElementById('notesSection').classList.remove('hidden');
         })
         .withFailureHandler(function(err){
@@ -199,57 +189,23 @@
         .getPostProjectJobDetails(row);
     }
 
-    // Follow-up overlay logic
-    function showFollowUp(customerName){
-      document.getElementById('fuCustomer').value = customerName || '';
+    // Toggle follow-up section inline when checkbox is clicked
+    function toggleFollowUp(){
+      var checked = document.getElementById('needsFollowUp').checked;
+      var section = document.getElementById('followUpSection');
+      if(checked){
+        section.classList.remove('hidden');
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+
+    function resetFollowUpFields(){
       document.getElementById('fuAddress').value = '';
       document.getElementById('fuPhone').value = '';
       document.getElementById('fuEmail').value = '';
       document.getElementById('fuPM').value = '';
       document.getElementById('fuReason').value = '';
-      document.getElementById('followUpOverlay').classList.remove('hidden');
-    }
-    function hideFollowUp(){
-      document.getElementById('followUpOverlay').classList.add('hidden');
-    }
-    function submitFollowUp(){
-      var data = {
-        customerName: document.getElementById('fuCustomer').value.trim(),
-        phone: document.getElementById('fuPhone').value.trim(),
-        email: document.getElementById('fuEmail').value.trim(),
-        address: document.getElementById('fuAddress').value.trim(),
-        pmResponsible: document.getElementById('fuPM').value.trim(),
-        reason: document.getElementById('fuReason').value.trim()
-      };
-      if(!data.customerName){
-        google.script.run.showUiMessage('warning','Customer Name is required.');
-        return;
-      }
-      if(!data.pmResponsible){
-        google.script.run.showUiMessage('warning','PM Responsible is required.');
-        return;
-      }
-      if(!data.reason){
-        google.script.run.showUiMessage('warning','Reason for follow up is required.');
-        return;
-      }
-      var btn=document.getElementById('fuSubmitBtn'), sp=document.getElementById('spinFU');
-      btn.disabled=true; sp.classList.remove('hidden');
-      google.script.run
-        .withSuccessHandler(function(res){
-          btn.disabled=false; sp.classList.add('hidden');
-          if(res && res.ok){
-            hideFollowUp();
-            google.script.run.showUiMessage('info','Saved note and follow up.');
-          } else {
-            google.script.run.showUiMessage('error','Follow up save failed: '+(res&&res.reason||'unknown'));
-          }
-        })
-        .withFailureHandler(function(err){
-          btn.disabled=false; sp.classList.add('hidden');
-          google.script.run.showUiMessage('error','Follow up save failed: '+(err&&err.message?err.message:err));
-        })
-        .saveFollowUp(data);
     }
 
     function save(){
@@ -259,17 +215,55 @@
       }
       var txt = document.getElementById('postNotes').value || '';
       var wantsFollowUp = document.getElementById('needsFollowUp').checked;
+
+      // Validate follow-up fields if checkbox is checked
+      if(wantsFollowUp){
+        var pm = document.getElementById('fuPM').value.trim();
+        var reason = document.getElementById('fuReason').value.trim();
+        if(!pm){
+          google.script.run.showUiMessage('warning','PM Responsible is required for follow up.');
+          return;
+        }
+        if(!reason){
+          google.script.run.showUiMessage('warning','Reason for follow up is required.');
+          return;
+        }
+      }
+
       setBusy(true);
       google.script.run
         .withSuccessHandler(function(res){
-          setBusy(false);
           if(res && res.ok){
             if(wantsFollowUp){
-              showFollowUp(selectedJobName);
+              // Now save the follow-up too
+              var fuData = {
+                customerName: selectedJobName,
+                phone: document.getElementById('fuPhone').value.trim(),
+                email: document.getElementById('fuEmail').value.trim(),
+                address: document.getElementById('fuAddress').value.trim(),
+                pmResponsible: document.getElementById('fuPM').value.trim(),
+                reason: document.getElementById('fuReason').value.trim()
+              };
+              google.script.run
+                .withSuccessHandler(function(fuRes){
+                  setBusy(false);
+                  if(fuRes && fuRes.ok){
+                    google.script.run.showUiMessage('info','Saved note and follow up.');
+                  } else {
+                    google.script.run.showUiMessage('error','Note saved but follow up failed: '+(fuRes&&fuRes.reason||'unknown'));
+                  }
+                })
+                .withFailureHandler(function(err){
+                  setBusy(false);
+                  google.script.run.showUiMessage('error','Note saved but follow up failed: '+(err&&err.message?err.message:err));
+                })
+                .saveFollowUp(fuData);
             } else {
+              setBusy(false);
               google.script.run.showUiMessage('info','Saved to Data!AD.');
             }
           } else {
+            setBusy(false);
             google.script.run.showUiMessage('warning','Save failed.');
           }
         })
@@ -284,8 +278,7 @@
       document.getElementById('saveBtn').addEventListener('click', save);
       document.getElementById('closeBtn').addEventListener('click', function(){ google.script.host.close(); });
       document.getElementById('jobSearch').addEventListener('input', function(){ renderList(); });
-      document.getElementById('fuSubmitBtn').addEventListener('click', submitFollowUp);
-      document.getElementById('fuCancelBtn').addEventListener('click', function(){ hideFollowUp(); });
+      document.getElementById('needsFollowUp').addEventListener('change', toggleFollowUp);
 
       google.script.run
         .withSuccessHandler(function(list){

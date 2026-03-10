@@ -29,17 +29,10 @@
     .followup-check { display:flex; align-items:center; gap:6px; margin:8px 0 0 0; padding:8px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; }
     .followup-check input { margin:0; }
     .followup-check label { font-weight:600; color:#795548; cursor:pointer; }
-    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100; }
-    .overlay-box { background:#fff; border-radius:10px; padding:20px; width:520px; max-width:90vw; box-shadow:0 4px 24px rgba(0,0,0,.2); }
-    .overlay-box h2 { margin:0 0 12px 0; font-size:16px; }
     .fu-grid { display:grid; grid-template-columns:160px 1fr; gap:8px 10px; align-items:center; }
     .fu-grid label { color:#555; font-weight:600; }
     .fu-grid input, .fu-grid textarea { padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; width:100%; }
     .fu-grid textarea { min-height:80px; resize:vertical; }
-    .fu-actions { display:flex; gap:8px; margin-top:14px; }
-    .fu-actions button { padding:8px 14px; }
-    .fu-actions .primary { background:#4285f4; color:#fff; border:1px solid #4285f4; border-radius:4px; }
-    .fu-actions .primary:hover { background:#3367d6; }
   </style>
 </head>
 <body>
@@ -47,34 +40,11 @@
 
   <div id="reviewers"></div>
   <div id="cardHost"></div>
-  <div id="followUpOverlay" class="overlay hidden">
-    <div class="overlay-box">
-      <h2>Customer Follow Up</h2>
-      <div class="fu-grid">
-        <label class="req">Customer Name</label>
-        <input id="fuCustomer" type="text" readonly style="background:#f5f5f5;">
-        <label>Address</label>
-        <input id="fuAddress" type="text" placeholder="Job address (optional)">
-        <label>Phone</label>
-        <input id="fuPhone" type="tel" placeholder="Phone number (optional)">
-        <label>Email</label>
-        <input id="fuEmail" type="email" placeholder="Email address (optional)">
-        <label class="req">PM Responsible</label>
-        <input id="fuPM" type="text" placeholder="Project Manager">
-        <label class="req">Reason for Follow Up</label>
-        <textarea id="fuReason" placeholder="Describe the issue or reason…"></textarea>
-      </div>
-      <div class="fu-actions">
-        <button class="primary" id="fuSubmitBtn" type="button">Submit Follow Up <span id="spinFU" class="spinner hidden"></span></button>
-        <button id="fuCancelBtn" type="button">Skip</button>
-      </div>
-    </div>
-  </div>
-
   <div class="actions">
     <button id="submitBtn" type="button">
       Submit This Job <span id="spinSubmit" class="spinner hidden"></span>
     </button>
+    <button type="button" id="skipBtn">Skip This Job</button>
     <button type="button" id="cancelBtn">Close</button>
 
     <div class="nav">
@@ -113,15 +83,16 @@
     var done = {}; // row -> true after submit
 
     // persistent state keyed by job row
-    var state = {}; // row -> {comment, mlOverride, mode, needsFollowUp}
+    var state = {}; // row -> {comment, mlOverride, mode, needsFollowUp, fuAddress, fuPhone, fuEmail, fuPM, fuReason}
     function initState(){
       for(var i=0;i<jobs.length;i++){
         var it=jobs[i];
         state[String(it.row)] = {
           comment: it.draftNotes || '',
           mlOverride: '',
-          mode: 'completed', // default; user can switch to Draft
-          needsFollowUp: false
+          mode: 'completed',
+          needsFollowUp: false,
+          fuAddress: '', fuPhone: '', fuEmail: '', fuPM: '', fuReason: ''
         };
       }
     }
@@ -151,6 +122,17 @@
 
       var fu = document.getElementById('needsFollowUp');
       if(fu) state[key].needsFollowUp = fu.checked;
+
+      var fuAddr = document.getElementById('fuAddress');
+      if(fuAddr) state[key].fuAddress = fuAddr.value;
+      var fuPhone = document.getElementById('fuPhone');
+      if(fuPhone) state[key].fuPhone = fuPhone.value;
+      var fuEmail = document.getElementById('fuEmail');
+      if(fuEmail) state[key].fuEmail = fuEmail.value;
+      var fuPM = document.getElementById('fuPM');
+      if(fuPM) state[key].fuPM = fuPM.value;
+      var fuReason = document.getElementById('fuReason');
+      if(fuReason) state[key].fuReason = fuReason.value;
     }
 
     function renderCard(){
@@ -200,6 +182,21 @@
             '<input type="checkbox" id="needsFollowUp" '+(st.needsFollowUp?'checked':'')+'>' +
             '<label for="needsFollowUp">Needs Follow Up?</label>' +
           '</div>' +
+          '<div id="fuSection" style="margin-top:8px;border:1px solid #ffe082;border-radius:8px;padding:12px;background:#fff8e1;'+(st.needsFollowUp?'':'display:none;')+'">' +
+            '<div style="font-weight:600;color:#795548;margin-bottom:8px;">Follow Up Details</div>' +
+            '<div class="fu-grid">' +
+              '<label>Address</label>' +
+              '<input id="fuAddress" type="text" placeholder="Job address (optional)" value="'+escapeHtml(st.fuAddress||'')+'">' +
+              '<label>Phone</label>' +
+              '<input id="fuPhone" type="tel" placeholder="Phone number (optional)" value="'+escapeHtml(st.fuPhone||'')+'">' +
+              '<label>Email</label>' +
+              '<input id="fuEmail" type="email" placeholder="Email address (optional)" value="'+escapeHtml(st.fuEmail||'')+'">' +
+              '<label class="req">PM Responsible</label>' +
+              '<input id="fuPM" type="text" placeholder="Project Manager" value="'+escapeHtml(st.fuPM||'')+'">' +
+              '<label class="req">Reason for Follow Up</label>' +
+              '<textarea id="fuReason" placeholder="Describe the issue or reason…">'+escapeHtml(st.fuReason||'')+'</textarea>' +
+            '</div>' +
+          '</div>' +
           '<div class="comment-wrap">' +
             '<label>Project Manager Notes</label>' +
             '<textarea class="jobComment">'+escapeHtml(st.comment||'')+'</textarea>' +
@@ -212,6 +209,16 @@
       document.getElementById('nextBtn').disabled = (idx === jobs.length - 1);
 
       document.getElementById('submitBtn').disabled = !!done[key];
+      document.getElementById('skipBtn').disabled = !!done[key];
+
+      // Wire checkbox to toggle follow-up section
+      var fuCb = document.getElementById('needsFollowUp');
+      if(fuCb){
+        fuCb.addEventListener('change', function(){
+          var sec = document.getElementById('fuSection');
+          if(sec) sec.style.display = fuCb.checked ? '' : 'none';
+        });
+      }
     }
 
     function prev(){
@@ -232,62 +239,10 @@
       renderCard(); // all submitted
     }
 
-    // Follow-up overlay logic
-    var pendingFollowUpName = '';
-
-    function showFollowUp(customerName){
-      pendingFollowUpName = customerName || '';
-      document.getElementById('fuCustomer').value = pendingFollowUpName;
-      document.getElementById('fuAddress').value = '';
-      document.getElementById('fuPhone').value = '';
-      document.getElementById('fuEmail').value = '';
-      document.getElementById('fuPM').value = '';
-      document.getElementById('fuReason').value = '';
-      document.getElementById('followUpOverlay').classList.remove('hidden');
-    }
-
-    function hideFollowUp(){
-      document.getElementById('followUpOverlay').classList.add('hidden');
-    }
-
-    function submitFollowUp(){
-      var data = {
-        customerName: document.getElementById('fuCustomer').value.trim(),
-        phone: document.getElementById('fuPhone').value.trim(),
-        email: document.getElementById('fuEmail').value.trim(),
-        address: document.getElementById('fuAddress').value.trim(),
-        pmResponsible: document.getElementById('fuPM').value.trim(),
-        reason: document.getElementById('fuReason').value.trim()
-      };
-      if(!data.customerName){
-        google.script.run.showUiMessage('warning','Customer Name is required.');
-        return;
-      }
-      if(!data.pmResponsible){
-        google.script.run.showUiMessage('warning','PM Responsible is required.');
-        return;
-      }
-      if(!data.reason){
-        google.script.run.showUiMessage('warning','Reason for follow up is required.');
-        return;
-      }
-      var btn=document.getElementById('fuSubmitBtn'), sp=document.getElementById('spinFU');
-      btn.disabled=true; sp.classList.remove('hidden');
-      google.script.run
-        .withSuccessHandler(function(res){
-          btn.disabled=false; sp.classList.add('hidden');
-          if(res && res.ok){
-            hideFollowUp();
-            advanceToNext();
-          } else {
-            google.script.run.showUiMessage('error','Follow up save failed: '+(res&&res.reason||'unknown'));
-          }
-        })
-        .withFailureHandler(function(err){
-          btn.disabled=false; sp.classList.add('hidden');
-          google.script.run.showUiMessage('error','Follow up save failed: '+(err&&err.message?err.message:err));
-        })
-        .saveFollowUp(data);
+    function skipThis(){
+      if(!jobs.length) return;
+      saveCurrentToState();
+      advanceToNext();
     }
 
     function submitThis(){
@@ -301,18 +256,55 @@
       var reviewers = PAYLOAD.reviewers || [];
       var st = state[key] || {comment:'', mlOverride:'', mode:'completed', needsFollowUp:false};
 
+      // Validate follow-up fields if checked
+      if(st.needsFollowUp){
+        if(!(st.fuPM||'').trim()){
+          google.script.run.showUiMessage('warning','PM Responsible is required for follow up.');
+          return;
+        }
+        if(!(st.fuReason||'').trim()){
+          google.script.run.showUiMessage('warning','Reason for follow up is required.');
+          return;
+        }
+      }
+
       setBusy(true);
       google.script.run
         .withSuccessHandler(function(res){
-          setBusy(false);
           if(res && res.ok){
             done[key] = true;
             if(st.needsFollowUp){
-              showFollowUp(it.projectName);
+              // Save follow-up data alongside the review
+              var fuData = {
+                customerName: it.projectName,
+                phone: st.fuPhone || '',
+                email: st.fuEmail || '',
+                address: st.fuAddress || '',
+                pmResponsible: st.fuPM || '',
+                reason: st.fuReason || ''
+              };
+              google.script.run
+                .withSuccessHandler(function(fuRes){
+                  setBusy(false);
+                  if(fuRes && fuRes.ok){
+                    advanceToNext();
+                  } else {
+                    google.script.run.showUiMessage('error','Job submitted but follow up save failed.');
+                    advanceToNext();
+                  }
+                })
+                .withFailureHandler(function(err){
+                  setBusy(false);
+                  google.script.run.showUiMessage('error','Job submitted but follow up failed: '+(err&&err.message?err.message:err));
+                  advanceToNext();
+                })
+                .saveFollowUp(fuData);
             } else {
+              setBusy(false);
               advanceToNext();
             }
           } else {
+            setBusy(false);
             google.script.run.showUiMessage('error','Submit failed.');
           }
         })
@@ -330,11 +322,10 @@
     }
 
     document.getElementById('submitBtn').addEventListener('click', submitThis);
+    document.getElementById('skipBtn').addEventListener('click', skipThis);
     document.getElementById('cancelBtn').addEventListener('click', function(){ google.script.host.close(); });
     document.getElementById('prevBtn').addEventListener('click', prev);
     document.getElementById('nextBtn').addEventListener('click', next);
-    document.getElementById('fuSubmitBtn').addEventListener('click', submitFollowUp);
-    document.getElementById('fuCancelBtn').addEventListener('click', function(){ hideFollowUp(); advanceToNext(); });
 
     initState();
     renderReviewers();
