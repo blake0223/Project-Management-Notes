@@ -219,7 +219,8 @@ function clearDataMUByPipedriveIds_(pipedriveIds) {
 
   for (var i = 0; i < block.length; i++) {
     var pid = String(block[i][1] || '').trim();
-    if (pid && idSet[pid]) {
+    var source = String(block[i][8] || '').trim(); // U column (source marker)
+    if (pid && idSet[pid] && source !== 'MANUAL_ENTRY') {
       sh.getRange(i + 2, 13, 1, 9).clearContent();
     }
   }
@@ -604,6 +605,116 @@ function getPostProjectJobDetails(row) {
     pmNotes: String(v[11] || '').trim(),        // L
     postNotes: String(v[29] || '').trim()       // AD
   };
+}
+
+/* =========================
+ * MANUAL JOB ENTRY (Data!M:U)
+ * - Writes to M:T with U = "MANUAL_ENTRY" marker
+ * - Prevents import from overwriting manual rows
+ * ========================= */
+
+/** Open Manual Job Entry dialog */
+function openManualJobEntryModal() {
+  var html = HtmlService.createHtmlOutputFromFile('manualJobEntry')
+    .setWidth(640)
+    .setHeight(520);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Manual Job Entry');
+}
+
+/** Return salesman names from Data!X for the dropdown */
+function getManualEntrySalesmen() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(DATA_SHEET);
+  if (!sh) return [];
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+
+  var raw = sh.getRange(2, 24, last - 1, 1).getValues(); // X2:X
+  var seen = {}, out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var v = String(raw[i][0] || '').trim();
+    if (!v) continue;
+    var k = v.toLowerCase();
+    if (!seen[k]) { seen[k] = true; out.push(v); }
+  }
+  out.sort(function(a, b) { return a.localeCompare(b); });
+  return out;
+}
+
+/** Find the next blank row in M:U (col 13-21), filling holes */
+function findHighestBlankRowMU_(sh) {
+  var last = Math.max(sh.getLastRow(), 2);
+  var num = last - 1;
+  if (num < 1) return 2;
+
+  var rng = sh.getRange(2, 13, num, 9).getValues(); // M:U
+  for (var i = 0; i < rng.length; i++) {
+    var row = rng[i], allBlank = true;
+    for (var c = 0; c < 9; c++) {
+      if (row[c] !== '' && row[c] !== null) { allBlank = false; break; }
+    }
+    if (allBlank) return i + 2;
+  }
+  return last + 1;
+}
+
+/** Save a manually-entered job to Data!M:U */
+function saveManualJobEntry(data) {
+  if (!data) return { ok: false, reason: 'No data provided.' };
+
+  var jobName     = String(data.jobName || '').trim();
+  var pipedriveId = String(data.pipedriveId || '').trim();
+  var salesman    = String(data.salesman || '').trim();
+  var startDate   = data.startDate || '';
+  var dealValue   = data.dealValue;
+  var estMaterial = data.estMaterial;
+  var estMandays  = data.estMandays;
+  var materialLink = normalizeUrl_(data.materialLink || '');
+
+  if (!jobName)     return { ok: false, reason: 'Job Name is required.' };
+  if (!pipedriveId) return { ok: false, reason: 'Pipedrive ID is required.' };
+  if (!salesman)    return { ok: false, reason: 'Salesman is required.' };
+
+  var sh = SpreadsheetApp.getActive().getSheetByName(DATA_SHEET);
+  if (!sh) return { ok: false, reason: 'Data sheet not found.' };
+
+  // Check for duplicate Pipedrive ID in N column
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var nVals = sh.getRange(2, 14, last - 1, 1).getValues(); // N2:N
+    for (var i = 0; i < nVals.length; i++) {
+      if (String(nVals[i][0] || '').trim() === pipedriveId) {
+        return { ok: false, reason: 'Pipedrive ID ' + pipedriveId + ' already exists in Data!N (row ' + (i + 2) + ').' };
+      }
+    }
+  }
+
+  var targetRow = findHighestBlankRowMU_(sh);
+
+  sh.getRange(targetRow, 13, 1, 9).setValues([[
+    jobName,                        // M
+    pipedriveId,                    // N
+    salesman,                       // O
+    startDate || '',                // P
+    dealValue != null ? dealValue : '',   // Q
+    estMaterial != null ? estMaterial : '',// R
+    estMandays != null ? estMandays : '', // S
+    '',                             // T (link set below)
+    'MANUAL_ENTRY'                  // U (source marker)
+  ]]);
+
+  // Formatting
+  sh.getRange(targetRow, 17, 1, 1).setNumberFormat('"$"#,##0.00'); // Q
+  sh.getRange(targetRow, 18, 1, 1).setNumberFormat('"$"#,##0.00'); // R
+  sh.getRange(targetRow, 19, 1, 1).setNumberFormat('0.00');        // S
+  if (startDate) sh.getRange(targetRow, 16, 1, 1).setNumberFormat('yyyy-mm-dd'); // P
+
+  // Material List link as HYPERLINK
+  if (materialLink) {
+    sh.getRange(targetRow, 20)
+      .setFormula('=HYPERLINK("' + materialLink.replace(/"/g, '""') + '","Open")');
+  }
+
+  return { ok: true, row: targetRow };
 }
 
 /** Save Data!AD for the selected job row */

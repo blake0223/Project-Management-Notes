@@ -36,9 +36,21 @@ function loadJobTrackingIntoData() {
 
   var lastSrcRow = srcSh.getLastRow();
 
-  // Clear old data
+  // Preserve manually-entered rows (U = "MANUAL_ENTRY") before clearing
+  var manualRows = [];
+  var manualLinks = [];
   var lastDataRow = dataSheet.getLastRow();
   if (lastDataRow >= 2) {
+    var existingMU = dataSheet.getRange(2, 13, lastDataRow - 1, 9).getValues(); // M:U
+    for (var mr = 0; mr < existingMU.length; mr++) {
+      if (String(existingMU[mr][8] || '').trim() === 'MANUAL_ENTRY') {
+        manualRows.push(existingMU[mr]);
+        // Capture HYPERLINK formula from T column if present
+        var tCell = dataSheet.getRange(mr + 2, 20);
+        var formula = tCell.getFormula();
+        manualLinks.push(formula || '');
+      }
+    }
     dataSheet.getRange(2, 13, lastDataRow - 1, 9).clearContent();
   }
 
@@ -122,24 +134,42 @@ function loadJobTrackingIntoData() {
     linkUrls.push(linkUrl);
   }
 
-  if (!out.length) return;
-
   var startRow = 2;
-  dataSheet.getRange(startRow, 13, out.length, 9).setValues(out);
 
-  // Formatting
-  dataSheet.getRange(startRow, 17, out.length, 1).setNumberFormat('"$"#,##0.00'); // Q
-  dataSheet.getRange(startRow, 18, out.length, 1).setNumberFormat('"$"#,##0.00'); // R
-  dataSheet.getRange(startRow, 19, out.length, 1).setNumberFormat('0.00');        // S
-  dataSheet.getRange(startRow, 16, out.length, 1).setNumberFormat('yyyy-mm-dd');  // P
+  if (out.length) {
+    dataSheet.getRange(startRow, 13, out.length, 9).setValues(out);
 
-  // Apply Material List links
-  for (var i = 0; i < linkUrls.length; i++) {
-    if (linkUrls[i]) {
-      dataSheet
-        .getRange(startRow + i, 20)
-        .setFormula('=HYPERLINK("' + linkUrls[i].replace(/"/g, '""') + '","Open")');
+    // Formatting
+    dataSheet.getRange(startRow, 17, out.length, 1).setNumberFormat('"$"#,##0.00'); // Q
+    dataSheet.getRange(startRow, 18, out.length, 1).setNumberFormat('"$"#,##0.00'); // R
+    dataSheet.getRange(startRow, 19, out.length, 1).setNumberFormat('0.00');        // S
+    dataSheet.getRange(startRow, 16, out.length, 1).setNumberFormat('yyyy-mm-dd');  // P
+
+    // Apply Material List links
+    for (var i = 0; i < linkUrls.length; i++) {
+      if (linkUrls[i]) {
+        dataSheet
+          .getRange(startRow + i, 20)
+          .setFormula('=HYPERLINK("' + linkUrls[i].replace(/"/g, '""') + '","Open")');
+      }
     }
+  }
+
+  // Restore manually-entered rows after imported data
+  if (manualRows.length) {
+    var manualStart = startRow + out.length;
+    dataSheet.getRange(manualStart, 13, manualRows.length, 9).setValues(manualRows);
+    // Restore HYPERLINK formulas for T column
+    for (var m = 0; m < manualLinks.length; m++) {
+      if (manualLinks[m]) {
+        dataSheet.getRange(manualStart + m, 20).setFormula(manualLinks[m]);
+      }
+    }
+    // Re-apply formatting for manual rows
+    dataSheet.getRange(manualStart, 17, manualRows.length, 1).setNumberFormat('"$"#,##0.00'); // Q
+    dataSheet.getRange(manualStart, 18, manualRows.length, 1).setNumberFormat('"$"#,##0.00'); // R
+    dataSheet.getRange(manualStart, 19, manualRows.length, 1).setNumberFormat('0.00');        // S
+    dataSheet.getRange(manualStart, 16, manualRows.length, 1).setNumberFormat('yyyy-mm-dd');  // P
   }
 
   console.log("=== loadJobTrackingIntoData COMPLETE ===");
