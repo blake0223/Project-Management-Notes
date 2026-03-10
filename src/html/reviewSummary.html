@@ -25,6 +25,20 @@
     .nav { margin-left:auto; display:flex; gap:8px; align-items:center; }
     .mode { display:inline-flex; gap:12px; align-items:center; margin-left:180px; }
     .mode label { display:inline-flex; gap:6px; align-items:center; }
+    .followup-check { display:flex; align-items:center; gap:6px; margin:8px 0 0 0; padding:8px; background:#fff8e1; border:1px solid #ffe082; border-radius:6px; }
+    .followup-check input { margin:0; }
+    .followup-check label { font-weight:600; color:#795548; cursor:pointer; }
+    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100; }
+    .overlay-box { background:#fff; border-radius:10px; padding:20px; width:520px; max-width:90vw; box-shadow:0 4px 24px rgba(0,0,0,.2); }
+    .overlay-box h2 { margin:0 0 12px 0; font-size:16px; }
+    .fu-grid { display:grid; grid-template-columns:160px 1fr; gap:8px 10px; align-items:center; }
+    .fu-grid label { color:#555; font-weight:600; }
+    .fu-grid input, .fu-grid textarea { padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; width:100%; }
+    .fu-grid textarea { min-height:80px; resize:vertical; }
+    .fu-actions { display:flex; gap:8px; margin-top:14px; }
+    .fu-actions button { padding:8px 14px; }
+    .fu-actions .primary { background:#4285f4; color:#fff; border:1px solid #4285f4; border-radius:4px; }
+    .fu-actions .primary:hover { background:#3367d6; }
   </style>
 </head>
 <body>
@@ -32,6 +46,29 @@
 
   <div id="reviewers"></div>
   <div id="cardHost"></div>
+  <div id="followUpOverlay" class="overlay hidden">
+    <div class="overlay-box">
+      <h2>Customer Follow Up</h2>
+      <div class="fu-grid">
+        <label>Customer Name</label>
+        <input id="fuCustomer" type="text" readonly style="background:#f5f5f5;">
+        <label>Address</label>
+        <input id="fuAddress" type="text" placeholder="Job address">
+        <label>Phone</label>
+        <input id="fuPhone" type="tel" placeholder="Phone number">
+        <label>Email</label>
+        <input id="fuEmail" type="email" placeholder="Email address">
+        <label>PM Responsible</label>
+        <input id="fuPM" type="text" placeholder="Project Manager">
+        <label>Reason for Follow Up</label>
+        <textarea id="fuReason" placeholder="Describe the issue or reason…"></textarea>
+      </div>
+      <div class="fu-actions">
+        <button class="primary" id="fuSubmitBtn" type="button">Submit Follow Up <span id="spinFU" class="spinner hidden"></span></button>
+        <button id="fuCancelBtn" type="button">Skip</button>
+      </div>
+    </div>
+  </div>
 
   <div class="actions">
     <button id="submitBtn" type="button">
@@ -75,14 +112,15 @@
     var done = {}; // row -> true after submit
 
     // persistent state keyed by job row
-    var state = {}; // row -> {comment, mlOverride, mode}
+    var state = {}; // row -> {comment, mlOverride, mode, needsFollowUp}
     function initState(){
       for(var i=0;i<jobs.length;i++){
         var it=jobs[i];
         state[String(it.row)] = {
           comment: it.draftNotes || '',
           mlOverride: '',
-          mode: 'completed' // default; user can switch to Draft
+          mode: 'completed', // default; user can switch to Draft
+          needsFollowUp: false
         };
       }
     }
@@ -109,6 +147,9 @@
 
       var m = document.querySelector('input[name="modePick"]:checked');
       if(m) state[key].mode = m.value;
+
+      var fu = document.getElementById('needsFollowUp');
+      if(fu) state[key].needsFollowUp = fu.checked;
     }
 
     function renderCard(){
@@ -154,6 +195,10 @@
           '<div class="row"><span class="label">Estimated mandays:</span> '+escapeHtml(estMandays)+'</div>' +
           '<div class="row"><span class="label">Material List Notes:</span> '+escapeHtml(it.materialListNotes||'')+'</div>' +
           modeHtml +
+          '<div class="followup-check">' +
+            '<input type="checkbox" id="needsFollowUp" '+(st.needsFollowUp?'checked':'')+'>' +
+            '<label for="needsFollowUp">Needs Follow Up?</label>' +
+          '</div>' +
           '<div class="comment-wrap">' +
             '<label>Project Manager Notes</label>' +
             '<textarea class="jobComment">'+escapeHtml(st.comment||'')+'</textarea>' +
@@ -177,6 +222,65 @@
       if(idx < jobs.length - 1){ idx++; renderCard(); }
     }
 
+    function advanceToNext(){
+      for(var i=0;i<jobs.length;i++){
+        var ni = (idx + 1 + i) % jobs.length;
+        var nk = String(jobs[ni].row);
+        if(!done[nk]){ idx = ni; renderCard(); return; }
+      }
+      renderCard(); // all submitted
+    }
+
+    // Follow-up overlay logic
+    var pendingFollowUpName = '';
+
+    function showFollowUp(customerName){
+      pendingFollowUpName = customerName || '';
+      document.getElementById('fuCustomer').value = pendingFollowUpName;
+      document.getElementById('fuAddress').value = '';
+      document.getElementById('fuPhone').value = '';
+      document.getElementById('fuEmail').value = '';
+      document.getElementById('fuPM').value = '';
+      document.getElementById('fuReason').value = '';
+      document.getElementById('followUpOverlay').classList.remove('hidden');
+    }
+
+    function hideFollowUp(){
+      document.getElementById('followUpOverlay').classList.add('hidden');
+    }
+
+    function submitFollowUp(){
+      var data = {
+        customerName: document.getElementById('fuCustomer').value.trim(),
+        phone: document.getElementById('fuPhone').value.trim(),
+        email: document.getElementById('fuEmail').value.trim(),
+        address: document.getElementById('fuAddress').value.trim(),
+        pmResponsible: document.getElementById('fuPM').value.trim(),
+        reason: document.getElementById('fuReason').value.trim()
+      };
+      if(!data.reason){
+        google.script.run.showUiMessage('warning','Please enter a reason for follow up.');
+        return;
+      }
+      var btn=document.getElementById('fuSubmitBtn'), sp=document.getElementById('spinFU');
+      btn.disabled=true; sp.classList.remove('hidden');
+      google.script.run
+        .withSuccessHandler(function(res){
+          btn.disabled=false; sp.classList.add('hidden');
+          if(res && res.ok){
+            hideFollowUp();
+            advanceToNext();
+          } else {
+            google.script.run.showUiMessage('error','Follow up save failed: '+(res&&res.reason||'unknown'));
+          }
+        })
+        .withFailureHandler(function(err){
+          btn.disabled=false; sp.classList.add('hidden');
+          google.script.run.showUiMessage('error','Follow up save failed: '+(err&&err.message?err.message:err));
+        })
+        .saveFollowUp(data);
+    }
+
     function submitThis(){
       if(!jobs.length) return;
       var it = jobs[idx];
@@ -186,7 +290,7 @@
       saveCurrentToState();
 
       var reviewers = PAYLOAD.reviewers || [];
-      var st = state[key] || {comment:'', mlOverride:'', mode:'completed'};
+      var st = state[key] || {comment:'', mlOverride:'', mode:'completed', needsFollowUp:false};
 
       setBusy(true);
       google.script.run
@@ -194,13 +298,11 @@
           setBusy(false);
           if(res && res.ok){
             done[key] = true;
-            // auto-advance to next unsubmitted job
-            for(var i=0;i<jobs.length;i++){
-              var ni = (idx + 1 + i) % jobs.length;
-              var nk = String(jobs[ni].row);
-              if(!done[nk]){ idx = ni; renderCard(); return; }
+            if(st.needsFollowUp){
+              showFollowUp(it.projectName);
+            } else {
+              advanceToNext();
             }
-            renderCard(); // all submitted
           } else {
             google.script.run.showUiMessage('error','Submit failed.');
           }
@@ -222,6 +324,8 @@
     document.getElementById('cancelBtn').addEventListener('click', function(){ google.script.host.close(); });
     document.getElementById('prevBtn').addEventListener('click', prev);
     document.getElementById('nextBtn').addEventListener('click', next);
+    document.getElementById('fuSubmitBtn').addEventListener('click', submitFollowUp);
+    document.getElementById('fuCancelBtn').addEventListener('click', function(){ hideFollowUp(); advanceToNext(); });
 
     initState();
     renderReviewers();

@@ -608,6 +608,44 @@ function getPostProjectJobDetails(row) {
 }
 
 /* =========================
+ * CUSTOMER FOLLOW UP (Customer Follow Up tab A:F)
+ * ========================= */
+
+/** Save a follow-up entry to "Customer Follow Up" tab */
+function saveFollowUp(data) {
+  if (!data) return { ok: false, reason: 'No data provided.' };
+
+  var customerName  = String(data.customerName || '').trim();
+  var phone         = String(data.phone || '').trim();
+  var email         = String(data.email || '').trim();
+  var address       = String(data.address || '').trim();
+  var pmResponsible = String(data.pmResponsible || '').trim();
+  var reason        = String(data.reason || '').trim();
+
+  if (!reason) return { ok: false, reason: 'Reason for follow up is required.' };
+
+  var TAB_NAME = 'Customer Follow Up';
+  var sh = SpreadsheetApp.getActive().getSheetByName(TAB_NAME);
+  if (!sh) return { ok: false, reason: 'Tab "' + TAB_NAME + '" not found.' };
+
+  // Find next blank row (headers in row 1)
+  var last = sh.getLastRow();
+  var targetRow = last + 1;
+  if (last < 1) targetRow = 2; // skip header row
+
+  sh.getRange(targetRow, 1, 1, 6).setValues([[
+    customerName,   // A
+    phone,          // B
+    email,          // C
+    address,        // D
+    pmResponsible,  // E
+    reason          // F
+  ]]);
+
+  return { ok: true, row: targetRow };
+}
+
+/* =========================
  * MANUAL JOB ENTRY (Data!M:U)
  * - Writes to M:T with U = "MANUAL_ENTRY" marker
  * - Prevents import from overwriting manual rows
