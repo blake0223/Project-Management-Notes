@@ -41,14 +41,14 @@
     <label for="startDate">Start Date</label>
     <input id="startDate" type="date">
 
-    <label class="req" for="dealValue">Deal Value</label>
-    <input id="dealValue" type="number" step="0.01" min="0" placeholder="0.00">
+    <label for="dealValue">Deal Value</label>
+    <input id="dealValue" type="number" step="0.01" min="0" placeholder="0.00 (optional)">
 
-    <label class="req" for="estMaterial">Estimated Material</label>
-    <input id="estMaterial" type="number" step="0.01" min="0" placeholder="0.00">
+    <label for="estMaterial">Estimated Material</label>
+    <input id="estMaterial" type="number" step="0.01" min="0" placeholder="0.00 (optional)">
 
-    <label class="req" for="estMandays">Estimated Mandays</label>
-    <input id="estMandays" type="number" step="0.01" min="0" placeholder="0.00">
+    <label for="estMandays">Estimated Mandays</label>
+    <input id="estMandays" type="number" step="0.01" min="0" placeholder="0.00 (optional)">
 
     <label for="materialLink">Material List Link</label>
     <input id="materialLink" type="url" placeholder="https://...">
@@ -108,9 +108,6 @@
       if (!jobName)     { showErr('Job Name is required.'); return; }
       if (!pipedriveId) { showErr('Pipedrive ID is required.'); return; }
       if (!salesman)    { showErr('Salesman is required.'); return; }
-      if (!dealValue)   { showErr('Deal Value is required.'); return; }
-      if (!estMaterial) { showErr('Estimated Material is required.'); return; }
-      if (!estMandays)  { showErr('Estimated Mandays is required.'); return; }
 
       setBusy(true);
       google.script.run
@@ -140,9 +137,9 @@
           pipedriveId: pipedriveId,
           salesman: salesman,
           startDate: startDate,
-          dealValue: parseFloat(dealValue),
-          estMaterial: parseFloat(estMaterial),
-          estMandays: parseFloat(estMandays),
+          dealValue: dealValue ? parseFloat(dealValue) : null,
+          estMaterial: estMaterial ? parseFloat(estMaterial) : null,
+          estMandays: estMandays ? parseFloat(estMandays) : null,
           materialLink: materialLink
         });
     }
