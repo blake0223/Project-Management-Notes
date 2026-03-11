@@ -1,4 +1,4 @@
-/** IMPORT Job Tracking -> Data!M:U (with headers) **/
+/** IMPORT Job Tracking -> Data!M:U (append-only, no clearing) **/
 function loadJobTrackingIntoData() {
   console.log("=== loadJobTrackingIntoData START ===");
 
@@ -35,52 +35,37 @@ function loadJobTrackingIntoData() {
   dataSheet.getRange(1, 13, 1, 9).setValues([headers]);
 
   var lastSrcRow = srcSh.getLastRow();
-
-  // Preserve manually-entered rows (U = "MANUAL_ENTRY") before clearing
-  var manualRows = [];
-  var manualLinks = [];
-  var lastDataRow = dataSheet.getLastRow();
-  if (lastDataRow >= 2) {
-    var existingMU = dataSheet.getRange(2, 13, lastDataRow - 1, 9).getValues(); // M:U
-    for (var mr = 0; mr < existingMU.length; mr++) {
-      if (String(existingMU[mr][8] || '').trim() === 'MANUAL_ENTRY') {
-        manualRows.push(existingMU[mr]);
-        // Capture HYPERLINK formula from T column if present
-        var tCell = dataSheet.getRange(mr + 2, 20);
-        var formula = tCell.getFormula();
-        manualLinks.push(formula || '');
-      }
-    }
-    dataSheet.getRange(2, 13, lastDataRow - 1, 9).clearContent();
-  }
-
   if (lastSrcRow < 2) return;
 
   var numRows = lastSrcRow - 1;
 
   // Source columns
-  // A Job Name
-  // B Pipedrive ID
-  // C Start Date
-  // E Salesman
-  // G Deal Value
-  // L Estimate Material
-  // O Estimate Mandays
-  // X Issue Notes
-  // Y Material List Link
+  // A Job Name, B Pipedrive ID, C Start Date, E Salesman
+  // G Deal Value, L Estimate Material, O Estimate Mandays
+  // X Issue Notes, Y Material List Link
   var valsAtoO = srcSh.getRange(2, 1, numRows, 15).getValues(); // A..O
   var valsX = srcSh.getRange(2, 24, numRows, 1).getValues();   // X
   var valsY = srcSh.getRange(2, 25, numRows, 1).getValues();   // Y
   var rtvY  = srcSh.getRange(2, 25, numRows, 1).getRichTextValues();
 
-  // Existing IDs from Data!B
-  var existingIds = {};
-  var lastMainRow = dataSheet.getLastRow();
-  if (lastMainRow >= 2) {
-    var ids = dataSheet.getRange(2, 2, lastMainRow - 1, 1).getValues();
-    for (var i = 0; i < ids.length; i++) {
-      var v = (ids[i][0] || '').toString().trim();
-      if (v) existingIds[v] = true;
+  // Build set of Pipedrive IDs already in Data!N (col 14) to avoid duplicates
+  var existingNIds = {};
+  var lastDataRow = dataSheet.getLastRow();
+  if (lastDataRow >= 2) {
+    var nVals = dataSheet.getRange(2, 14, lastDataRow - 1, 1).getValues(); // N column
+    for (var i = 0; i < nVals.length; i++) {
+      var v = String(nVals[i][0] || '').trim();
+      if (v) existingNIds[v] = true;
+    }
+  }
+
+  // Also check Data!B for IDs already reviewed/in the system
+  var existingBIds = {};
+  if (lastDataRow >= 2) {
+    var bVals = dataSheet.getRange(2, 2, lastDataRow - 1, 1).getValues();
+    for (var i = 0; i < bVals.length; i++) {
+      var v = String(bVals[i][0] || '').trim();
+      if (v) existingBIds[v] = true;
     }
   }
 
@@ -116,7 +101,9 @@ function loadJobTrackingIntoData() {
     var issueNotes = String(valsX[r][0] || '').trim(); // X
 
     if (!pipedrive) continue;
-    if (existingIds[pipedrive]) continue;
+    // Skip if already in M:U (col N) or already reviewed (col B)
+    if (existingNIds[pipedrive]) continue;
+    if (existingBIds[pipedrive]) continue;
 
     var linkUrl = extractUrl_(rtvY[r][0], valsY[r][0]);
 
@@ -134,43 +121,30 @@ function loadJobTrackingIntoData() {
     linkUrls.push(linkUrl);
   }
 
-  var startRow = 2;
+  if (!out.length) {
+    console.log("No new jobs to import.");
+    return;
+  }
 
-  if (out.length) {
-    dataSheet.getRange(startRow, 13, out.length, 9).setValues(out);
+  // Append new rows after existing data (no clearing)
+  var appendRow = Math.max(lastDataRow + 1, 2);
+  dataSheet.getRange(appendRow, 13, out.length, 9).setValues(out);
 
-    // Formatting
-    dataSheet.getRange(startRow, 17, out.length, 1).setNumberFormat('"$"#,##0.00'); // Q
-    dataSheet.getRange(startRow, 18, out.length, 1).setNumberFormat('"$"#,##0.00'); // R
-    dataSheet.getRange(startRow, 19, out.length, 1).setNumberFormat('0.00');        // S
-    dataSheet.getRange(startRow, 16, out.length, 1).setNumberFormat('yyyy-mm-dd');  // P
+  // Formatting
+  dataSheet.getRange(appendRow, 17, out.length, 1).setNumberFormat('"$"#,##0.00'); // Q
+  dataSheet.getRange(appendRow, 18, out.length, 1).setNumberFormat('"$"#,##0.00'); // R
+  dataSheet.getRange(appendRow, 19, out.length, 1).setNumberFormat('0.00');        // S
+  dataSheet.getRange(appendRow, 16, out.length, 1).setNumberFormat('yyyy-mm-dd');  // P
 
-    // Apply Material List links
-    for (var i = 0; i < linkUrls.length; i++) {
-      if (linkUrls[i]) {
-        dataSheet
-          .getRange(startRow + i, 20)
-          .setFormula('=HYPERLINK("' + linkUrls[i].replace(/"/g, '""') + '","Open")');
-      }
+  // Apply Material List links
+  for (var i = 0; i < linkUrls.length; i++) {
+    if (linkUrls[i]) {
+      dataSheet
+        .getRange(appendRow + i, 20)
+        .setFormula('=HYPERLINK("' + linkUrls[i].replace(/"/g, '""') + '","Open")');
     }
   }
 
-  // Restore manually-entered rows after imported data
-  if (manualRows.length) {
-    var manualStart = startRow + out.length;
-    dataSheet.getRange(manualStart, 13, manualRows.length, 9).setValues(manualRows);
-    // Restore HYPERLINK formulas for T column
-    for (var m = 0; m < manualLinks.length; m++) {
-      if (manualLinks[m]) {
-        dataSheet.getRange(manualStart + m, 20).setFormula(manualLinks[m]);
-      }
-    }
-    // Re-apply formatting for manual rows
-    dataSheet.getRange(manualStart, 17, manualRows.length, 1).setNumberFormat('"$"#,##0.00'); // Q
-    dataSheet.getRange(manualStart, 18, manualRows.length, 1).setNumberFormat('"$"#,##0.00'); // R
-    dataSheet.getRange(manualStart, 19, manualRows.length, 1).setNumberFormat('0.00');        // S
-    dataSheet.getRange(manualStart, 16, manualRows.length, 1).setNumberFormat('yyyy-mm-dd');  // P
-  }
-
+  console.log("Appended " + out.length + " new jobs.");
   console.log("=== loadJobTrackingIntoData COMPLETE ===");
 }
