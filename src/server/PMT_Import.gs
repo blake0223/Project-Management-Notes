@@ -181,6 +181,9 @@ function loadJobTrackingIntoData() {
   var newLinks = [];
 
   for (var id in merged) {
+    // Skip entirely if this Pipedrive ID already exists in Data!B
+    if (existingBIds[id]) continue;
+
     var m = merged[id];
     var rowData = [
       m.jobName,
