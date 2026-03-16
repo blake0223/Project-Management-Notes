@@ -146,7 +146,13 @@ function loadJobTrackingIntoData() {
     var m = {};
     for (var f = 0; f < fields.length; f++) {
       var key = fields[f];
-      m[key] = !isBlank_(pmt[key]) ? pmt[key] : (jt[key] || '');
+      if (key === 'jobName') {
+        // Job name: prefer Job Tracking (second source) if available
+        m[key] = !isBlank_(jt[key]) ? jt[key] : (pmt[key] || '');
+      } else {
+        // All other fields: prefer PMT (primary source) if available
+        m[key] = !isBlank_(pmt[key]) ? pmt[key] : (jt[key] || '');
+      }
     }
     // Normalize salesman name
     if (typeof m.salesman === 'string' && m.salesman.toUpperCase() === 'POG') {
