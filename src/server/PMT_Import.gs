@@ -211,9 +211,18 @@ function loadJobTrackingIntoData() {
     }
   }
 
-  // Append new rows
+  // Find first blank row in M:U (cols 13-21) to append new data
   if (newRows.length) {
-    var appendRow = Math.max(dataSheet.getLastRow() + 1, 2);
+    var appendRow = 2; // default if no data in M:U
+    var lastSheetRow = dataSheet.getLastRow();
+    if (lastSheetRow >= 2) {
+      var mColVals = dataSheet.getRange(2, 13, lastSheetRow - 1, 1).getValues(); // M column
+      for (var i = 0; i < mColVals.length; i++) {
+        if (String(mColVals[i][0] || '').trim() !== '') {
+          appendRow = i + 3; // next row after this occupied one
+        }
+      }
+    }
     dataSheet.getRange(appendRow, 13, newRows.length, 9).setValues(newRows);
 
     for (var i = 0; i < newRows.length; i++) {
