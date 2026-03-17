@@ -252,12 +252,12 @@ function collectRecipients_(salesmenInJobs) {
   // Head of Sales in Y2 only
   addEmails(String(sh.getRange(2, COL_Y).getDisplayValue() || '').trim());
 
-  // Build map X -> Z
-  const xzVals = sh.getRange(2, COL_X, last - 1, 2).getValues(); // X and Z
+  // Build map X -> Z (read X,Y,Z — 3 cols starting at X)
+  const xzVals = sh.getRange(2, COL_X, last - 1, 3).getValues(); // X, Y, Z
   const map = [];
   for (let i = 0; i < xzVals.length; i++) {
-    const rawName = String(xzVals[i][0] || '').trim();
-    const shop    = String(xzVals[i][1] || '').trim();
+    const rawName = String(xzVals[i][0] || '').trim();   // X
+    const shop    = String(xzVals[i][2] || '').trim();    // Z (index 2, not 1)
     const k = nameKey_(rawName);
     if (!k || !shop) continue;
     map.push({ key: k, shop: shop });
