@@ -1,11 +1,9 @@
-/** IMPORT from PMT (priority) + Job Tracking (fallback) -> Data!M:U **/
+/** IMPORT from PMT -> Data!M:U + Data!I,K on reviewed rows **/
 function loadJobTrackingIntoData() {
   console.log("=== loadJobTrackingIntoData START ===");
 
   var PMT_ID     = '1idlaLvh8uXW1_fe3PfJirXcTHXYev5YrUSisLCUDCWk';
   var PMT_TAB    = 'Project Tracker';
-  var JT_ID      = '1MnkDZSNcNR4RFiPE3-QfSVtEvZ_M_qS_KdRHGiFyAvY';
-  var JT_TAB     = 'Job Tracking';
   var TARGET_TAB = 'Data';
 
   var targetSs = SpreadsheetApp.getActive();
@@ -53,9 +51,10 @@ function loadJobTrackingIntoData() {
     return String(val).trim() === '';
   }
 
-  // ── Read PMT (priority source) ──
+  // ── Read PMT ──
   // A=Job Name, C=Pipedrive ID, E=Salesman, G=Start Date, I=Deal Value
-  // N=Estimate Material, R=Estimate Mandays, AM=Issue Notes (39), AN=Material List Link (40)
+  // N=Estimate Material, O=Actual Material, R=Estimate Mandays, S=Actual Mandays
+  // AM=Issue Notes (39), AN=Material List Link (40)
   var pmtJobs = {};  // keyed by Pipedrive ID
   var pmtLinks = {}; // link URLs keyed by Pipedrive ID
   try {
@@ -65,103 +64,55 @@ function loadJobTrackingIntoData() {
       var pmtLastRow = pmtSh.getLastRow();
       if (pmtLastRow >= 2) {
         var pmtRows = pmtLastRow - 1;
-        var pmtAtoR  = pmtSh.getRange(2, 1, pmtRows, 18).getValues();  // A..R
+        var pmtAtoS  = pmtSh.getRange(2, 1, pmtRows, 19).getValues();  // A..S
         var pmtAM    = pmtSh.getRange(2, 39, pmtRows, 1).getValues();  // AM
         var pmtAN    = pmtSh.getRange(2, 40, pmtRows, 1).getValues();  // AN
         var pmtRtvAN = pmtSh.getRange(2, 40, pmtRows, 1).getRichTextValues();
 
         for (var r = 0; r < pmtRows; r++) {
-          var pid = String(pmtAtoR[r][2] || '').trim();  // C = Pipedrive ID
+          var pid = String(pmtAtoS[r][2] || '').trim();  // C = Pipedrive ID
           if (!pid) continue;
           pmtJobs[pid] = {
-            jobName:    String(pmtAtoR[r][0] || '').trim(),   // A
-            salesman:   String(pmtAtoR[r][4] || '').trim(),   // E
-            startDate:  pmtAtoR[r][6],                         // G
-            dealValue:  pmtAtoR[r][8],                         // I
-            estMat:     pmtAtoR[r][13],                        // N
-            estMandays: pmtAtoR[r][17],                        // R
-            issueNotes: String(pmtAM[r][0] || '').trim()       // AM
+            jobName:     String(pmtAtoS[r][0] || '').trim(),   // A
+            salesman:    String(pmtAtoS[r][4] || '').trim(),   // E
+            startDate:   pmtAtoS[r][6],                         // G
+            dealValue:   pmtAtoS[r][8],                         // I
+            estMat:      pmtAtoS[r][13],                        // N
+            actMat:      pmtAtoS[r][14],                        // O  → Data!I
+            estMandays:  pmtAtoS[r][17],                        // R
+            actMandays:  pmtAtoS[r][18],                        // S  → Data!K
+            issueNotes:  String(pmtAM[r][0] || '').trim()       // AM
           };
           pmtLinks[pid] = extractUrl_(pmtRtvAN[r][0], pmtAN[r][0]);
         }
       }
     } else {
-      console.log('WARNING: PMT tab "Project Tracker" not found, using Job Tracking only.');
+      console.log('WARNING: PMT tab "Project Tracker" not found.');
     }
   } catch (e) {
     console.log('WARNING: Could not open PMT spreadsheet: ' + e.message);
   }
 
-  // ── Read Job Tracking (fallback source) ──
-  // A=Job Name, B=Pipedrive ID, C=Start Date, E=Salesman, G=Deal Value
-  // L=Estimate Material, O=Estimate Mandays, X=Issue Notes, Y=Material List Link
-  var jtJobs = {};
-  var jtLinks = {};
-  try {
-    var jtSs = SpreadsheetApp.openById(JT_ID);
-    var jtSh = jtSs.getSheetByName(JT_TAB);
-    if (jtSh) {
-      var jtLastRow = jtSh.getLastRow();
-      if (jtLastRow >= 2) {
-        var jtRows = jtLastRow - 1;
-        var jtAtoO = jtSh.getRange(2, 1, jtRows, 15).getValues(); // A..O
-        var jtX    = jtSh.getRange(2, 24, jtRows, 1).getValues();  // X
-        var jtY    = jtSh.getRange(2, 25, jtRows, 1).getValues();  // Y
-        var jtRtvY = jtSh.getRange(2, 25, jtRows, 1).getRichTextValues();
-
-        for (var r = 0; r < jtRows; r++) {
-          var pid = String(jtAtoO[r][1] || '').trim();  // B = Pipedrive ID
-          if (!pid) continue;
-          jtJobs[pid] = {
-            jobName:    String(jtAtoO[r][0] || '').trim(),   // A
-            salesman:   String(jtAtoO[r][4] || '').trim(),   // E
-            startDate:  jtAtoO[r][2],                         // C
-            dealValue:  jtAtoO[r][6],                         // G
-            estMat:     jtAtoO[r][11],                        // L
-            estMandays: jtAtoO[r][14],                        // O
-            issueNotes: String(jtX[r][0] || '').trim()         // X
-          };
-          jtLinks[pid] = extractUrl_(jtRtvY[r][0], jtY[r][0]);
-        }
-      }
-    } else {
-      console.log('WARNING: Job Tracking tab not found.');
-    }
-  } catch (e) {
-    console.log('WARNING: Could not open Job Tracking spreadsheet: ' + e.message);
-  }
-
-  // ── Merge: PMT fields win unless blank, then fall back to Job Tracking ──
-  var allIds = {};
-  for (var id in pmtJobs) allIds[id] = true;
-  for (var id in jtJobs)  allIds[id] = true;
-
-  // merged[pipedriveId] = { jobName, salesman, startDate, dealValue, estMat, estMandays, issueNotes, linkUrl }
+  // ── Build merged map from PMT only ──
   var merged = {};
-  var fields = ['jobName', 'salesman', 'startDate', 'dealValue', 'estMat', 'estMandays', 'issueNotes'];
-
-  for (var id in allIds) {
-    var pmt = pmtJobs[id] || {};
-    var jt  = jtJobs[id] || {};
-    var m = {};
-    for (var f = 0; f < fields.length; f++) {
-      var key = fields[f];
-      if (key === 'jobName') {
-        // Job name: prefer Job Tracking (second source) if available
-        m[key] = !isBlank_(jt[key]) ? jt[key] : (pmt[key] || '');
-      } else {
-        // All other fields: prefer PMT (primary source) if available
-        m[key] = !isBlank_(pmt[key]) ? pmt[key] : (jt[key] || '');
-      }
-    }
+  for (var id in pmtJobs) {
+    var p = pmtJobs[id];
+    var m = {
+      jobName:    p.jobName,
+      salesman:   p.salesman,
+      startDate:  p.startDate,
+      dealValue:  p.dealValue,
+      estMat:     p.estMat,
+      actMat:     p.actMat,
+      estMandays: p.estMandays,
+      actMandays: p.actMandays,
+      issueNotes: p.issueNotes,
+      linkUrl:    pmtLinks[id] || ''
+    };
     // Normalize salesman name
     if (typeof m.salesman === 'string' && m.salesman.toUpperCase() === 'POG') {
       m.salesman = "Patrick O'Gara";
     }
-    // Link: PMT wins if non-empty
-    var pmtLink = pmtLinks[id] || '';
-    var jtLink  = jtLinks[id] || '';
-    m.linkUrl = pmtLink || jtLink;
     merged[id] = m;
   }
 
@@ -252,7 +203,21 @@ function loadJobTrackingIntoData() {
     }
   }
 
-  console.log("Updated " + updatedCount + " existing rows, appended " + newRows.length + " new rows.");
+  // ── Update Data!I (col 9) and K (col 11) on reviewed rows matched by Pipedrive ID in B ──
+  var actualUpdated = 0;
+  if (lastDataRow >= 2) {
+    var bValsRefresh = dataSheet.getRange(2, 2, lastDataRow - 1, 1).getValues();
+    for (var i = 0; i < bValsRefresh.length; i++) {
+      var pid = String(bValsRefresh[i][0] || '').trim();
+      if (!pid || !merged[pid]) continue;
+      var job = merged[pid];
+      if (!isBlank_(job.actMat))     dataSheet.getRange(i + 2, 9).setValue(job.actMat);    // I
+      if (!isBlank_(job.actMandays)) dataSheet.getRange(i + 2, 11).setValue(job.actMandays); // K
+      actualUpdated++;
+    }
+  }
+
+  console.log("Updated " + updatedCount + " existing rows, appended " + newRows.length + " new rows, refreshed actuals on " + actualUpdated + " reviewed rows.");
   console.log("=== loadJobTrackingIntoData COMPLETE ===");
 }
 
