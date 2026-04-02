@@ -226,7 +226,7 @@ function clearDataMUByPipedriveIds_(pipedriveIds) {
   }
 }
 
-/** recipients = all emails in W2:W, Y2 only, and shop Z per salesman present (match using X->Z) */
+/** recipients = W2:W (always), Y2 sales manager (always), + matched salesman's Y email + Z shop email */
 function collectRecipients_(salesmenInJobs) {
   const sh = SpreadsheetApp.getActive().getSheetByName(DATA_SHEET);
   if (!sh) return [];
@@ -249,18 +249,19 @@ function collectRecipients_(salesmenInJobs) {
   const wVals = sh.getRange(2, COL_W, last - 1, 1).getValues();
   for (let i = 0; i < wVals.length; i++) addEmails(wVals[i][0]);
 
-  // Head of Sales in Y2 only
+  // Sales manager = Y2 (first salesman, always included)
   addEmails(String(sh.getRange(2, COL_Y).getDisplayValue() || '').trim());
 
-  // Build map X -> Z (read X,Y,Z — 3 cols starting at X)
-  const xzVals = sh.getRange(2, COL_X, last - 1, 3).getValues(); // X, Y, Z
+  // Build map X -> { salesEmail (Y), shopEmail (Z) }
+  const xyzVals = sh.getRange(2, COL_X, last - 1, 3).getValues(); // X, Y, Z
   const map = [];
-  for (let i = 0; i < xzVals.length; i++) {
-    const rawName = String(xzVals[i][0] || '').trim();   // X
-    const shop    = String(xzVals[i][2] || '').trim();    // Z (index 2, not 1)
+  for (let i = 0; i < xyzVals.length; i++) {
+    const rawName   = String(xyzVals[i][0] || '').trim();  // X
+    const salesEmail = String(xyzVals[i][1] || '').trim();  // Y
+    const shopEmail  = String(xyzVals[i][2] || '').trim();  // Z
     const k = nameKey_(rawName);
-    if (!k || !shop) continue;
-    map.push({ key: k, shop: shop });
+    if (!k) continue;
+    map.push({ key: k, salesEmail: salesEmail, shopEmail: shopEmail });
   }
 
   const sales = Array.isArray(salesmenInJobs) ? salesmenInJobs : [];
@@ -271,7 +272,10 @@ function collectRecipients_(salesmenInJobs) {
     let matched = map.filter(m => m.key === wantedKey);
     if (!matched.length) matched = map.filter(m => m.key.includes(wantedKey) || wantedKey.includes(m.key));
 
-    for (let j = 0; j < matched.length; j++) addEmails(matched[j].shop);
+    for (let j = 0; j < matched.length; j++) {
+      addEmails(matched[j].salesEmail);
+      addEmails(matched[j].shopEmail);
+    }
   }
 
   return Object.keys(set);
